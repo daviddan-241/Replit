@@ -78,6 +78,65 @@ export async function registerRoutes(
     }
   });
 
+  // === Code Execution via Piston API ===
+  app.post("/api/execute", requireAuth, async (req: any, res) => {
+    try {
+      const { language, code } = req.body;
+      if (!language || !code) {
+        return res.status(400).json({ message: "language and code are required" });
+      }
+
+      const LANGUAGE_VERSION_MAP: Record<string, string> = {
+        python: "3.10.0",
+        javascript: "18.15.0",
+        typescript: "5.0.3",
+        bash: "5.2.0",
+        sh: "5.2.0",
+        ruby: "3.0.1",
+        go: "1.16.2",
+        rust: "1.50.0",
+        "c++": "10.2.0",
+        cpp: "10.2.0",
+        c: "10.2.0",
+        java: "15.0.2",
+        php: "8.2.3",
+        lua: "5.4.4",
+        js: "18.15.0",
+        ts: "5.0.3",
+      };
+
+      const langKey = language.toLowerCase();
+      const version = LANGUAGE_VERSION_MAP[langKey] || "*";
+      const pistonLang = langKey === "js" ? "javascript" : langKey === "ts" ? "typescript" : langKey === "cpp" ? "c++" : langKey;
+
+      const response = await fetch("https://emkc.org/api/v2/piston/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          language: pistonLang,
+          version,
+          files: [{ content: code }],
+        }),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        return res.status(502).json({ message: `Execution engine error: ${errText}` });
+      }
+
+      const data = await response.json();
+      const run = data.run || {};
+      res.json({
+        stdout: run.stdout || "",
+        stderr: run.stderr || "",
+        exitCode: run.code ?? 0,
+      });
+    } catch (err: any) {
+      console.error("Execute error:", err);
+      res.status(500).json({ message: err.message || "Execution failed" });
+    }
+  });
+
   // === Chat Completion ===
   app.post(api.chat.completions.path, requireAuth, async (req: any, res) => {
     const userId = req.user.claims.sub;
